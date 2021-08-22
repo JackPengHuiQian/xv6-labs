@@ -135,10 +135,10 @@ proc_freekpagetable(pagetable_t p){
       continue;
     pagetable_t t1=(pagetable_t)PTE2PA(pte2);
     for(int j=0;j<512;++j){
-      int index_2=PX(2,PLIC);
+      /*int index_2=PX(2,PLIC);
       int index_1=PX(1,PLIC);
       if(i==index_2&&(j==index_1||j==index_1+1))
-        continue;
+        continue;*/
       pte_t pte1=t1[j];
       if((pte1&PTE_V)==0)
         continue;

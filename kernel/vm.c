@@ -63,13 +63,14 @@ proc_kpagetable(){
   kvmmap(kpagetable, CLINT, CLINT, 0x10000, PTE_R | PTE_W);
 
   //PLIC
-  int index_2=PX(2,PLIC);
+  /*int index_2=PX(2,PLIC);
   int index_1=PX(1,PLIC);
   pagetable_t np=(pagetable_t)PTE2PA(kpagetable[index_2]);
   pagetable_t op=(pagetable_t)PTE2PA(kernel_pagetable[index_2]);
   for(int i=0;i<2;++i){
     np[index_1+i]=op[index_1+i];
-  }
+  }*/
+  kvmmap(kpagetable, PLIC, PLIC, 0x400000, PTE_R | PTE_W);
   kvmmap(kpagetable,TRAMPOLINE,(uint64)trampoline,PGSIZE,PTE_R|PTE_X);
   return kpagetable;
 }
