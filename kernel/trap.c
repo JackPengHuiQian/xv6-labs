@@ -6,6 +6,7 @@
 #include "proc.h"
 #include "defs.h"
 
+extern int ref[];
 struct spinlock tickslock;
 uint ticks;
 
@@ -65,17 +66,44 @@ usertrap(void)
     intr_on();
 
     syscall();
-  } else if((which_dev = devintr()) != 0){
+  }  else if((which_dev = devintr()) != 0){
     // ok
+  } else if(r_scause()==13||r_scause()==15) {
+    uint64 va = r_stval();
+    pte_t * pte = walk(p->pagetable, va, 0);
+
+    if(pte == 0) {
+      p->killed=1;
+      goto err;
+    }
+    uint64 pa = PTE2PA(*pte);
+    uint flags = PTE_FLAGS(*pte);
+
+    if ((*pte & PTE_S) == 0){ 
+      p->killed=1;
+      goto err;
+    }
+    char *mem;
+    if((mem = kalloc()) == 0){
+      p->killed=1;
+      goto err;
+    } 
+    memmove(mem, (char*)pa, PGSIZE);
+
+    flags = (PTE_FLAGS(*pte) & ~PTE_S) | PTE_W;
+    uvmunmap(p->pagetable, PGROUNDDOWN(va), 1, 1);
+    if(mappages(p->pagetable, PGROUNDDOWN(va), PGSIZE, (uint64)mem, flags) != 0) {
+      kfree(mem);
+      goto err;
+    }
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
     p->killed = 1;
   }
-
+  err:
   if(p->killed)
     exit(-1);
-
   // give up the CPU if this is a timer interrupt.
   if(which_dev == 2)
     yield();
