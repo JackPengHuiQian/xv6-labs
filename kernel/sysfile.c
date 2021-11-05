@@ -484,3 +484,74 @@ sys_pipe(void)
   }
   return 0;
 }
+uint64
+sys_mmap(void)
+{
+    uint64 addr;
+    int length;
+    int port;
+    int flags;
+    int fd;
+    int offset;
+    struct file *file;
+    uint64 err=0xffffffffffffffff;
+    if((argaddr(0,&addr)<0)||(argint(1,&length)<0)||(argint(2,&port)<0)
+       ||(argint(3,&flags)<0)||(argfd(4,&fd,&file)<0)||(argint(5,&offset)<0))
+    return err;
+    if(addr!=0||offset!=0||length<0)
+        return err;
+    if(file->writable==0&&(port&PROT_WRITE)!=0&&flags==MAP_SHARED)
+        return err;
+    struct proc *p=myproc();
+    if(p->sz+length>MAXVA)
+        return err;
+    for(int i=0;i<NVMA;++i){
+        if(p->vma[i].used==0){
+            p->vma[i].used=1;
+            p->vma[i].addr=p->sz;
+            p->vma[i].len=length;
+            p->vma[i].flags=flags;
+            p->vma[i].port=port;
+            p->vma[i].vfile=file;
+            p->vma[i].vfd=fd;
+            p->vma[i].offset=offset;
+            filedup(file);
+            p->sz+=length;
+            return p->vma[i].addr;
+        }
+    }
+    return err;
+}
+uint64
+sys_munmap(void){
+    uint64 addr;
+    int len;
+    if(argaddr(0,&addr)<0||argint(1,&len)<0)
+        return -1;
+    int i;
+    struct proc *p=myproc();
+    for(i=0;i<NVMA;++i){
+        if(p->vma[i].used&&p->vma[i].len>=len){
+            if(p->vma[i].addr==addr){
+                p->vma[i].addr+=len;
+                p->vma[i].len-=len;
+                break;
+            }
+            if(addr+len==p->vma[i].addr+p->vma[i].len){
+                p->vma[i].len-=len;
+                break;
+            }
+        }
+    }
+    if(i==NVMA)
+        return -1;
+    if(p->vma[i].flags==MAP_SHARED&&(p->vma[i].port&PROT_WRITE)){
+        filewrite(p->vma[i].vfile,addr,len);
+    }
+    uvmunmap(p->pagetable,addr,len/PGSIZE,1);
+    if(p->vma[i].len==0){
+        fileclose(p->vma[i].vfile);
+        p->vma[i].used=0;
+    }
+    return 0;
+}

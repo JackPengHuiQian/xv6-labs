@@ -1,5 +1,4 @@
-//
-// Support functions for system calls that involve file descriptors.
+// // Support functions for system calls that involve file descriptors.
 //
 
 #include "types.h"
@@ -12,6 +11,7 @@
 #include "file.h"
 #include "stat.h"
 #include "proc.h"
+#include "fcntl.h"
 
 struct devsw devsw[NDEV];
 struct {
@@ -180,3 +180,48 @@ filewrite(struct file *f, uint64 addr, int n)
   return ret;
 }
 
+int
+mmap_handler(int va,int cause){
+	        struct proc *p=myproc();
+            int i;
+            for(i=0;i<NVMA;++i){
+                if(p->vma[i].used&&p->vma[i].addr<=va&&va<=p->vma[i].addr+p->vma[i].len-1)
+                    break;
+            }
+            if(i==NVMA){
+                return -1;
+            }
+            int pte_flags=PTE_U;
+            if(p->vma[i].port&PROT_READ)
+                pte_flags|=PTE_R;
+            if(p->vma[i].port&PROT_WRITE)
+                pte_flags|=PTE_W;
+            if(p->vma[i].port&PROT_EXEC)
+                pte_flags|=PTE_X; 
+            struct file *f=p->vma[i].vfile;
+            if(cause==13&&f->readable==0){
+                return -1;
+            }
+            if(cause==15&&f->writable==0){
+                return -1;
+            }
+            void *pa=kalloc();
+            if(pa==0){
+                return -1;
+            }
+            memset(pa,0,PGSIZE);
+            ilock(f->ip);
+            int offset=p->vma[i].offset+PGROUNDDOWN(va-p->vma[i].addr);
+            int bytes=readi(f->ip,0,(uint64)pa,offset,PGSIZE);
+            if(bytes==0){
+                kfree(pa);
+                iunlock(f->ip);
+                return -1;
+            }
+            iunlock(f->ip);
+            if(mappages(p->pagetable,PGROUNDDOWN(va),PGSIZE,(uint64)pa,pte_flags)!=0){
+                kfree(pa);
+                return -1;
+            }
+      	    return 0;
+}
